@@ -16,7 +16,8 @@ COPY data ./data
 # written here and shared with the lazily spawned backend child.
 RUN mkdir -p /srv/data/state
 ENV BACKEND_DATA_DIR=/srv/data/state \
-    BACKEND_LOG_FILE=/srv/data/sample_logs.jsonl
+    BACKEND_LOG_FILE=/srv/data/sample_logs.jsonl \
+    BACKEND_DRILL_LOG_FILE=/srv/data/drill_gateway_logs.jsonl
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \

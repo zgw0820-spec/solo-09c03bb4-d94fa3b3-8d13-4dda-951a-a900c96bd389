@@ -12,7 +12,11 @@ It verifies, over real HTTP:
     shared start, and only that query fails;
   * idle reaping terminates the child (no lingering pid);
   * a query arriving right after a reap wakes a fresh child;
-  * at any sampled moment at most one backend child is alive.
+  * at any sampled moment at most one backend child is alive;
+  * the drill clock starts at the first log timestamp, advances in real time,
+    pauses/resumes, and a search accepted before a pause keeps its instant;
+  * a slow drill query accepted at a later instant is voided when a rewind is
+    confirmed while it is still in flight, and a normal search still works.
 """
 
 from __future__ import annotations
@@ -79,6 +83,8 @@ async def main() -> int:
         env = os.environ.copy()
         env["BACKEND_IDLE_TIMEOUT_S"] = "2"
         env["BACKEND_DATA_DIR"] = str(ROOT / "data" / "state")
+        env["BACKEND_LOG_FILE"] = str(ROOT / "data" / "sample_logs.jsonl")
+        env["BACKEND_DRILL_LOG_FILE"] = str(ROOT / "data" / "drill_gateway_logs.jsonl")
         env["PYTHONPATH"] = str(ROOT)
         server = subprocess.Popen(
             [PY, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
@@ -160,6 +166,100 @@ async def main() -> int:
                 max_seen = max(max_seen, len(child_pids()))
             check(max_seen <= 1, "never more than one child process", f"max={max_seen}")
 
+            print("[6] drill clock: start, play, pause, resume")
+            await http.put("/api/settings", json={"startup_delay_ms": 300, "response_delay_ms": 0})
+            drill = (await http.post("/api/drill/start")).json()
+            check(drill["started"] and drill["playing"], "drill clock started playing")
+            first_ms = drill["first_at_ms"]
+            await asyncio.sleep(0.6)
+            paused = (await http.post("/api/drill/control", json={"action": "pause"})).json()
+            check(not paused["playing"], "clock paused")
+            check(paused["now_ms"] - first_ms >= 500, "clock advanced with real time",
+                  f"+{paused['now_ms'] - first_ms}ms")
+            frozen = paused["now_ms"]
+            await asyncio.sleep(0.4)
+            still = (await http.get("/api/drill")).json()
+            check(still["now_ms"] == frozen, "clock frozen while paused")
+            resumed = (await http.post("/api/drill/control", json={"action": "resume"})).json()
+            check(resumed["playing"], "clock resumed")
+            await asyncio.sleep(0.3)
+            moving = (await http.get("/api/drill")).json()
+            check(moving["now_ms"] > frozen, "clock advanced after resume")
+
+            print("[7] accepted instant survives pause; results are time-sliced")
+            await http.put("/api/settings", json={"response_delay_ms": 800})
+            early = (await http.post("/api/drill/control", json={"action": "pause"})).json()
+            accepted_expected = early["now_ms"]
+            slow = asyncio.create_task(
+                http.post("/api/drill/search", json={"query": "", "limit": 200})
+            )
+            await asyncio.sleep(0.2)
+            check(await wait_for(lambda: _drill_inflight(http), timeout=3),
+                  "slow drill query is in flight")
+            await http.post("/api/drill/control", json={"action": "resume"})
+            body = (await slow).json()
+            check(body["drill"]["accepted_at_ms"] == accepted_expected,
+                  "accepted instant unchanged by pause/resume",
+                  f"{body['drill']['accepted_at_ms']} == {accepted_expected}")
+            stamps = [row.get("ts_ms") for row in body["results"]]
+            check(all(ts is not None and ts <= accepted_expected for ts in stamps),
+                  "all rows are at or before the accepted instant")
+            status = (await http.get("/api/status")).json()
+            check(status["counters"]["starts"] == 1 + status["counters"]["reaps"]
+                  or status["backend_pid"] is not None,
+                  "drill search used the lazy backend")
+
+            print("[8] rewind voids an in-flight drill query and clears later results")
+            # Freeze at a fairly late instant so a rewind is unambiguous.
+            await asyncio.sleep(1.2)
+            await http.post("/api/drill/control", json={"action": "pause"})
+            late = (await http.get("/api/drill")).json()
+            before_gen = late["generation"]
+            slow = asyncio.create_task(
+                http.post("/api/drill/search", json={"query": "", "limit": 200})
+            )
+            await asyncio.sleep(0.2)
+            check(await wait_for(lambda: _drill_inflight(http), timeout=3),
+                  "slow drill query accepted before rewind")
+            rewound = await http.post(
+                "/api/drill/control",
+                json={"action": "seek", "at_ms": late["first_at_ms"] + 1000},
+            )
+            check(rewound.status_code == 200, "rewind accepted")
+            check(rewound.json()["now_ms"] == late["first_at_ms"] + 1000,
+                  "clock moved to rewind target")
+            check(rewound.json()["generation"] == before_gen + 1,
+                  "rewind bumped the generation")
+            resp = await slow
+            check(resp.status_code == 409, "in-flight drill query got 409", resp.text[:90])
+            check(resp.json().get("error") == "drill_rewound", "error is drill_rewound")
+            snap = (await http.get("/api/drill")).json()
+            check(snap["voided"] is True, "drill snapshot records the rewind")
+            check(snap["rewinds"][-1]["voided"] >= 1, "rewind counted the voided query",
+                  str(snap["rewinds"][-1]))
+
+            print("[9] normal search unaffected; idle reap keeps clock")
+            await http.put("/api/settings", json={"response_delay_ms": 0})
+            normal = await http.post(
+                "/api/search", json={"query": "ERROR", "limit": 2, "ready_timeout_ms": 6000}
+            )
+            check(normal.status_code == 200, "normal search still works after rewind")
+            clock_before = (await http.get("/api/drill")).json()
+            reaped = await wait_for(lambda: not child_pids(), timeout=12)
+            check(reaped, "backend reaped while drill stays started")
+            clock_after = (await http.get("/api/drill")).json()
+            check(clock_after["started"] is True, "drill clock survives reap")
+            check(
+                clock_after["now_ms"] >= clock_before["now_ms"],
+                "paused clock did not jump across the reap",
+            )
+            await http.post("/api/drill/control", json={"action": "resume"})
+            again = await http.post(
+                "/api/drill/search", json={"query": "timeout", "limit": 5, "ready_timeout_ms": 6000}
+            )
+            check(again.status_code == 200, "drill search wakes a fresh child after reap")
+            check(len(child_pids()) == 1, "still one child", str(child_pids()))
+
             await http.put("/api/settings", json={"startup_delay_ms": 800, "response_delay_ms": 0})
     finally:
         if server is not None:
@@ -190,6 +290,13 @@ async def _probe(http: httpx.AsyncClient) -> bool:
 async def _async_status_stopped(http: httpx.AsyncClient) -> bool:
     try:
         return (await http.get("/api/status")).json()["state"] == "stopped"
+    except httpx.HTTPError:
+        return False
+
+
+async def _drill_inflight(http: httpx.AsyncClient) -> bool:
+    try:
+        return (await http.get("/api/drill")).json().get("in_flight", 0) >= 1
     except httpx.HTTPError:
         return False
 

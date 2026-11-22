@@ -10,6 +10,7 @@ services:
       BACKEND_IDLE_TIMEOUT_S: "10"
       BACKEND_DATA_DIR: "/srv/data/state"
       BACKEND_LOG_FILE: "/srv/data/sample_logs.jsonl"
+      BACKEND_DRILL_LOG_FILE: "/srv/data/drill_gateway_logs.jsonl"
     volumes:
       - log-search-state:/srv/data/state
     restart: unless-stopped

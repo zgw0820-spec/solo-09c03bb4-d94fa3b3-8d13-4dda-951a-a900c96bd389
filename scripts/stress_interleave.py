@@ -35,6 +35,8 @@ async def main() -> int:
     env = os.environ.copy()
     env["BACKEND_IDLE_TIMEOUT_S"] = "1"
     env["BACKEND_DATA_DIR"] = str(ROOT / "data" / "state")
+    env["BACKEND_LOG_FILE"] = str(ROOT / "data" / "sample_logs.jsonl")
+    env["BACKEND_DRILL_LOG_FILE"] = str(ROOT / "data" / "drill_gateway_logs.jsonl")
     env["PYTHONPATH"] = str(ROOT)
     server = subprocess.Popen(
         [PY, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",

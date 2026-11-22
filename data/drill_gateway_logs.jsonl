@@ -1,0 +1,18 @@
+{"ts":"2026-11-22T08:20:00.000+08:00","level":"ERROR","service":"gateway","host":"gw-01","trace_id":"drill-0001","message":"upstream timeout after 3000ms while calling order-service"}
+{"ts":"2026-11-22T08:20:01.800+08:00","level":"WARN","service":"gateway","host":"gw-01","trace_id":"drill-0001","message":"retry 1/3 for GET /api/orders after upstream timeout"}
+{"ts":"2026-11-22T08:20:03.200+08:00","level":"ERROR","service":"gateway","host":"gw-02","trace_id":"drill-0002","message":"upstream timeout after 3000ms while calling order-service"}
+{"ts":"2026-11-22T08:20:04.400+08:00","level":"WARN","service":"gateway","host":"gw-02","trace_id":"drill-0003","message":"retry 2/3 for GET /api/orders after upstream timeout"}
+{"ts":"2026-11-22T08:20:05.600+08:00","level":"ERROR","service":"gateway","host":"gw-01","trace_id":"drill-0004","message":"upstream timeout after 3000ms while calling order-service"}
+{"ts":"2026-11-22T08:20:06.600+08:00","level":"WARN","service":"gateway","host":"gw-01","trace_id":"drill-0005","message":"timeout rate 38% over 30s window, SLO 5%"}
+{"ts":"2026-11-22T08:20:08.000+08:00","level":"WARN","service":"gateway","host":"gw-01","trace_id":"drill-0006","message":"circuit breaker OPEN for order-service after 12 consecutive timeouts"}
+{"ts":"2026-11-22T08:20:09.600+08:00","level":"ERROR","service":"gateway","host":"gw-01","trace_id":"drill-0007","message":"circuit breaker open: fast-failing GET /api/orders with 503"}
+{"ts":"2026-11-22T08:20:11.000+08:00","level":"INFO","service":"gateway","host":"gw-02","trace_id":"drill-0007","message":"circuit breaker open: 34 requests fast-failed in 5s, no upstream timeout"}
+{"ts":"2026-11-22T08:20:13.000+08:00","level":"WARN","service":"gateway","host":"gw-01","trace_id":"drill-0008","message":"circuit breaker HALF_OPEN: sending probe to order-service after timeout cooldown"}
+{"ts":"2026-11-22T08:20:14.400+08:00","level":"INFO","service":"gateway","host":"gw-01","trace_id":"drill-0008","message":"circuit breaker probe succeeded, latency 280ms"}
+{"ts":"2026-11-22T08:20:16.000+08:00","level":"INFO","service":"gateway","host":"gw-01","trace_id":"drill-0009","message":"circuit breaker CLOSED for order-service: timeout rate fell below threshold"}
+{"ts":"2026-11-22T08:20:18.000+08:00","level":"INFO","service":"gateway","host":"gw-01","trace_id":"drill-0010","message":"recovery: timeout rate 2.1% and falling"}
+{"ts":"2026-11-22T08:20:20.000+08:00","level":"INFO","service":"gateway","host":"gw-02","trace_id":"drill-0010","message":"recovery: upstream error rate 0.8%, SLO met"}
+{"ts":"2026-11-22T08:20:22.500+08:00","level":"INFO","service":"gateway","host":"gw-01","trace_id":"drill-0011","message":"traffic restored to 100% for /api/orders"}
+{"ts":"2026-11-22T08:20:25.000+08:00","level":"INFO","service":"gateway","host":"gw-02","trace_id":"drill-0011","message":"p99 latency 420ms back within SLO"}
+{"ts":"2026-11-22T08:20:27.500+08:00","level":"INFO","service":"gateway","host":"gw-01","trace_id":"drill-0012","message":"drill: post-recovery health check passed"}
+{"ts":"2026-11-22T08:20:30.000+08:00","level":"INFO","service":"gateway","host":"gw-01","trace_id":"drill-0013","message":"drill complete: timeouts tripped breaker, recovery confirmed"}

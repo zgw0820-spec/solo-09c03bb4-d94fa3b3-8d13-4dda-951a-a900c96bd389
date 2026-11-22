@@ -23,10 +23,39 @@ def test_ids_are_unique():
 
 def test_api_endpoints_used_by_ui_exist():
     used = set(re.findall(r'fetch\("(/api/[\w/-]+)"', JS))
-    assert used == {"/api/status", "/api/search", "/api/settings"}
+    assert used == {
+        "/api/status",
+        "/api/search",
+        "/api/settings",
+        "/api/drill",
+        "/api/drill/start",
+        "/api/drill/control",
+        "/api/drill/search",
+    }
+    # And every route the page calls is actually declared by the app.
+    main_src = (Path(__file__).resolve().parent.parent / "app" / "main.py").read_text(
+        encoding="utf-8"
+    )
+    declared = set(re.findall(r'@app\.(?:get|post|put|delete)\("(/api/[\w/-]+)"', main_src))
+    assert used <= declared
 
 
 def test_page_mentions_required_controls():
     for needle in ("searchForm", "readyTimeout", "startupDelay", "responseDelay", "stateBadge"):
         assert needle in HTML
     assert "就绪等待上限" in HTML
+
+
+def test_drill_controls_exist():
+    for needle in (
+        "drillToggle",
+        "drillRewind",
+        "drillClock",
+        "drillRange",
+        "drillSearchForm",
+        "drillSearchBanner",
+        "drillMarkers",
+    ):
+        assert needle in HTML
+    assert "回拨" in HTML
+    assert "作废" in HTML

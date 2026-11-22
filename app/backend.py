@@ -10,6 +10,10 @@ line ``{"event": "listening", "port": ...}`` on stdout, then answers
 parent only considers the backend ready once ``/health`` returns 200.
 
 Search endpoint: ``GET /search?q=<text>&limit=<n>``
+Drill endpoint: ``GET /drill/search?q=&limit=&at_ms=`` returns log lines whose
+timestamp is at or before ``at_ms`` (the instant fixed by the gateway when the
+search was accepted).  The clock itself lives in the gateway; the child only
+slices the file.
 Runtime config: ``response_delay_ms`` is re-read from the runtime config file on
 every request, so it can be changed without restarting the process.
 """
@@ -23,6 +27,7 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -32,12 +37,48 @@ _READY = threading.Event()
 _RUNTIME_CONFIG: dict[str, Any] = {"path": None, "response_delay_ms": 0}
 
 
+def _parse_ts(value: Any) -> int | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return round(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+    except ValueError:
+        return None
+
+
 def _load_lines(path: str) -> list[str]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
             return [line.rstrip("\n") for line in handle if line.strip()]
     except OSError:
         return []
+
+
+def _load_sliced(path: str, at_ms: int) -> tuple[int, list[tuple[int, str, int | None]]]:
+    """Return (scanned, [(line_no, raw, ts_ms)]) for entries with ``ts <= at_ms``.
+
+    Lines without a parseable ``ts`` are treated as not yet visible: the drill
+    timeline is defined by timestamps, and silently including undated lines
+    would make "as of" meaningless.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw_lines = [line.rstrip("\n") for line in handle if line.strip()]
+    except OSError:
+        return 0, []
+    visible: list[tuple[int, str, int | None]] = []
+    scanned = 0
+    for index, raw in enumerate(raw_lines):
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        ts = _parse_ts(payload.get("ts")) if isinstance(payload, dict) else None
+        if ts is None or ts > at_ms:
+            continue
+        scanned += 1
+        visible.append((index + 1, raw, ts))
+    return scanned, visible
 
 
 def _read_response_delay(default_ms: int) -> int:
@@ -79,6 +120,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/search":
             self._handle_search(parsed.query)
+            return
+        if parsed.path == "/drill/search":
+            self._handle_drill_search(parsed.query)
             return
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -127,14 +171,75 @@ class Handler(BaseHTTPRequestHandler):
             },
         )
 
+    def _handle_drill_search(self, query: str) -> None:
+        params = parse_qs(query)
+        term = (params.get("q") or [""])[0].strip()
+        try:
+            limit = int((params.get("limit") or ["50"])[0])
+        except ValueError:
+            limit = 50
+        limit = max(1, min(200, limit))
+        raw_at = (params.get("at_ms") or [""])[0]
+        try:
+            at_ms = int(raw_at)
+        except ValueError:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, {"error": "at_ms must be an integer"}
+            )
+            return
+
+        delay_ms = _read_response_delay(int(self.server.default_response_delay_ms))
+        if delay_ms:
+            time.sleep(delay_ms / 1000.0)
+
+        if not _READY.is_set():
+            self._send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "not ready"})
+            return
+
+        started = time.monotonic()
+        total_visible, visible = _load_sliced(self.server.drill_log_file, at_ms)
+        needle = term.lower()
+        matches: list[dict[str, Any]] = []
+        for line_no, raw, ts in visible:
+            if not needle or needle in raw.lower():
+                match: dict[str, Any] = {"line": line_no, "raw": raw, "ts_ms": ts}
+                try:
+                    match["log"] = json.loads(raw)
+                except json.JSONDecodeError:
+                    pass
+                matches.append(match)
+                if len(matches) >= limit:
+                    break
+
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "query": term,
+                "at_ms": at_ms,
+                "total_scanned": total_visible,
+                "count": len(matches),
+                "truncated": len(matches) >= limit,
+                "results": matches,
+                "backend_pid": os.getpid(),
+                "backend_elapsed_ms": round((time.monotonic() - started) * 1000, 2),
+            },
+        )
+
 
 class BackendServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address: tuple[str, int], log_file: str, response_delay_ms: int):
+    def __init__(
+        self,
+        address: tuple[str, int],
+        log_file: str,
+        response_delay_ms: int,
+        drill_log_file: str = "",
+    ):
         super().__init__(address, Handler)
         self.log_file = log_file
+        self.drill_log_file = drill_log_file or log_file
         self.default_response_delay_ms = response_delay_ms
 
 
@@ -147,6 +252,7 @@ def _set_ready_later(delay_ms: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log-file", required=True)
+    parser.add_argument("--drill-log-file", default="")
     parser.add_argument("--runtime-config", default="")
     parser.add_argument("--startup-delay-ms", type=int, default=0)
     parser.add_argument("--response-delay-ms", type=int, default=0)
@@ -163,7 +269,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         server = BackendServer(
-            (args.host, args.port), args.log_file, args.response_delay_ms
+            (args.host, args.port),
+            args.log_file,
+            args.response_delay_ms,
+            drill_log_file=args.drill_log_file,
         )
     except OSError as exc:
         print(f"failed to bind: {exc}", file=sys.stderr, flush=True)

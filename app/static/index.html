@@ -160,6 +160,55 @@
   .empty { color: var(--muted); text-align: center; padding: 26px 8px; font-size: 13px; }
   .toggle { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
   .flex-spacer { flex: 1; }
+  .drill-clock {
+    font-family: var(--mono);
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .drill-clock small { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 8px; }
+  .drill-clock.frozen { color: var(--warn); }
+  .drill-sub { color: var(--muted); font-size: 12px; margin-top: 3px; font-family: var(--mono); }
+  .drill-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .drill-controls .grow { flex: 1; }
+  input[type=range].drill-range { width: 100%; margin: 12px 0 4px; accent-color: var(--warn); }
+  .drill-scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
+  .drill-scale b { color: var(--text); font-weight: 550; }
+  .markers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .marker {
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .marker:hover { color: var(--text); border-color: var(--accent); }
+  .marker.past { color: var(--text); }
+  .marker .t { color: var(--muted); font-family: var(--mono); margin-left: 5px; }
+  .drill-banner {
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 8px 11px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .drill-banner.void { border-color: rgba(242,109,109,.45); color: #ffc9c9; background: rgba(242,109,109,.08); }
+  .drill-banner b { color: var(--text); font-family: var(--mono); }
+  .stamp {
+    display: inline-block;
+    border: 1px solid rgba(240,180,41,.4);
+    color: var(--warn);
+    border-radius: 6px;
+    padding: 1px 7px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
 </style>
 </head>
 <body>
@@ -168,6 +217,46 @@
   <span class="sub">后端按需唤醒 · 并发共享一次启动 · 空闲自动回收</span>
 </header>
 <main>
+  <section class="panel" style="grid-column: 1 / -1" id="drillPanel">
+    <h2>
+      网关故障演练时钟
+      <span class="badge" id="drillBadge"><span class="dot"></span><span id="drillStateText">未开始</span></span>
+    </h2>
+    <div class="body">
+      <div class="row" style="align-items:flex-start; gap:24px; flex-wrap:wrap">
+        <div style="flex: 1 1 420px; min-width: 300px">
+          <div class="drill-clock" id="drillClock">--:--:--.000<small id="drillOffset">按真实经过时间推进</small></div>
+          <div class="drill-sub" id="drillSub">启动演练后，时钟从首条日志的时刻开始推进。</div>
+          <input type="range" class="drill-range" id="drillRange" min="0" max="1000" value="0" step="1" disabled>
+          <div class="drill-scale"><span id="drillMin">—</span><span id="drillMax">—</span></div>
+          <div class="drill-controls">
+            <button id="drillStart" disabled>开始演练</button>
+            <button class="secondary" id="drillToggle" disabled>暂停</button>
+            <button class="secondary" id="drillRewind" disabled>回拨</button>
+            <span class="grow"></span>
+            <span class="hint" id="drillGen"></span>
+          </div>
+          <form class="search" id="drillSearchForm" style="margin-top:14px">
+            <input type="text" id="drillQuery" placeholder="演练检索：timeout / breaker / recovery" autocomplete="off">
+            <button type="submit" id="drillSearchBtn" disabled>按当前时点检索</button>
+          </form>
+          <p class="hint" style="margin:8px 0 0">受理时点以提交那一刻为准；慢查询在途时可回拨，结果会被作废。</p>
+          <label class="toggle" style="margin-top:10px">
+            <input type="checkbox" id="drillFollow"> 播放时自动按当前时点跟随检索
+          </label>
+        </div>
+        <div style="flex: 1 1 340px; min-width: 280px">
+          <div class="hint" style="margin-bottom:8px">演练阶段（点击可回拨或快进到该时刻）</div>
+          <div class="markers" id="drillMarkers"><span class="hint">启动演练后显示关键阶段。</span></div>
+          <div class="hint" style="margin-top:12px">
+            演练检索按「受理瞬间」检索截至该时刻的日志；播放或暂停不改变已受理的时点。
+            回拨确认后，尚未返回的旧演练检索一律作废。
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel">
     <h2>
       检索样例日志
@@ -183,10 +272,12 @@
       <p class="hint" style="margin:8px 0 0">
         中间数字为条数上限，右侧为本次就绪等待上限（毫秒，从提交时计）。
       </p>
+      <div id="drillSearchBanner"></div>
       <div id="errorBox"></div>
       <div id="resultMeta" class="result-meta"></div>
       <ol class="results" id="results"></ol>
       <div class="empty" id="emptyHint">输入关键词后回车检索。首次检索会唤醒后端，稍等片刻。</div>
+      <div class="empty" id="drillVoidHint" style="display:none"></div>
     </div>
   </section>
 

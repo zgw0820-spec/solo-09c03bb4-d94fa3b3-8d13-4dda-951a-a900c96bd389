@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .manager import BackendManager, BackendUnavailable
+from .manager import BackendManager, BackendUnavailable, DrillError
 from .settings import (
     RESPONSE_DELAY_MAX_MS,
     STARTUP_DELAY_MAX_MS,
@@ -29,6 +29,17 @@ class SettingsUpdate(BaseModel):
     startup_delay_ms: int | None = Field(default=None, ge=0, le=STARTUP_DELAY_MAX_MS)
     response_delay_ms: int | None = Field(default=None, ge=0, le=RESPONSE_DELAY_MAX_MS)
     default_ready_timeout_ms: int | None = Field(default=None, ge=100, le=60000)
+
+
+class DrillSearchRequest(BaseModel):
+    query: str = Field(default="", max_length=500)
+    limit: int = Field(default=50, ge=1, le=200)
+    ready_timeout_ms: int | None = Field(default=None, ge=100, le=60000)
+
+
+class DrillControlRequest(BaseModel):
+    action: str = Field(pattern="^(pause|resume|seek)$")
+    at_ms: int | None = None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -64,6 +75,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "error": exc.kind,
                 "detail": exc.detail,
             },
+        )
+
+    @app.exception_handler(DrillError)
+    async def drill_error_handler(_request: Request, exc: DrillError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status,
+            content={"error": exc.kind, "detail": exc.detail, **exc.extra},
         )
 
     @app.get("/api/health")
@@ -102,6 +120,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await manager.search(
             payload.query, payload.limit, payload.ready_timeout_ms
         )
+
+    # ------------------------------------------------------------------ drill
+    @app.get("/api/drill")
+    async def drill_status() -> dict[str, Any]:
+        return await manager.drill_snapshot()
+
+    @app.post("/api/drill/start")
+    async def drill_start() -> dict[str, Any]:
+        return await manager.drill_start()
+
+    @app.post("/api/drill/control")
+    async def drill_control(payload: DrillControlRequest) -> dict[str, Any]:
+        return await manager.drill_control(payload.action, payload.at_ms)
+
+    @app.post("/api/drill/search")
+    async def drill_search(payload: DrillSearchRequest) -> dict[str, Any]:
+        return await manager.drill_search(
+            payload.query, payload.limit, payload.ready_timeout_ms
+        )
+
+    @app.delete("/api/drill")
+    async def drill_reset() -> dict[str, Any]:
+        return await manager.drill_reset()
 
     @app.get("/")
     async def index() -> FileResponse:

@@ -71,6 +71,7 @@ class Settings:
     """
 
     log_file: Path = DEFAULT_DATA_DIR / "sample_logs.jsonl"
+    drill_log_file: Path = DEFAULT_DATA_DIR / "drill_gateway_logs.jsonl"
     config_file: Path = DEFAULT_DATA_DIR / "settings.json"
     runtime_config_file: Path = DEFAULT_DATA_DIR / "runtime_config.json"
     startup_delay_ms: int = 800
@@ -82,8 +83,15 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         data_dir = Path(os.getenv("BACKEND_DATA_DIR", str(DEFAULT_DATA_DIR)))
+        log_file = Path(os.getenv("BACKEND_LOG_FILE", str(data_dir / "sample_logs.jsonl")))
         settings = cls(
-            log_file=Path(os.getenv("BACKEND_LOG_FILE", str(data_dir / "sample_logs.jsonl"))),
+            log_file=log_file,
+            drill_log_file=Path(
+                os.getenv(
+                    "BACKEND_DRILL_LOG_FILE",
+                    str(log_file.parent / "drill_gateway_logs.jsonl"),
+                )
+            ),
             config_file=Path(os.getenv("BACKEND_CONFIG_FILE", str(data_dir / "settings.json"))),
             runtime_config_file=Path(
                 os.getenv("BACKEND_RUNTIME_CONFIG_FILE", str(data_dir / "runtime_config.json"))
@@ -152,4 +160,5 @@ class Settings:
             "startup_timeout_s": self.startup_timeout_s,
             "idle_timeout_s": self.idle_timeout_s,
             "log_file": str(self.log_file),
+            "drill_log_file": str(self.drill_log_file),
         }
