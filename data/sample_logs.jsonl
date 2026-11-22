@@ -1,0 +1,30 @@
+{"ts":"2026-11-22T08:01:12.331+08:00","level":"ERROR","service":"gateway","host":"gw-01","trace_id":"tr-9f21a0","message":"upstream timeout after 3000ms while calling order-service"}
+{"ts":"2026-11-22T08:01:12.402+08:00","level":"WARN","service":"gateway","host":"gw-01","trace_id":"tr-9f21a0","message":"circuit breaker opened for order-service, failure rate 62%"}
+{"ts":"2026-11-22T08:02:03.118+08:00","level":"ERROR","service":"order-service","host":"ord-03","trace_id":"tr-1aa772","message":"connection refused: payment-db:5432 after 3 retries"}
+{"ts":"2026-11-22T08:02:03.149+08:00","level":"ERROR","service":"order-service","host":"ord-03","trace_id":"tr-1aa772","message":"failed to commit order 88213: connection refused"}
+{"ts":"2026-11-22T08:02:44.771+08:00","level":"ERROR","service":"payment-service","host":"pay-02","trace_id":"tr-77c1de","message":"payment callback signature mismatch for merchant M-1201"}
+{"ts":"2026-11-22T08:03:09.006+08:00","level":"WARN","service":"auth-service","host":"auth-01","trace_id":"tr-2b8e44","message":"token introspection latency 1800ms exceeds SLO 500ms"}
+{"ts":"2026-11-22T08:03:31.527+08:00","level":"ERROR","service":"auth-service","host":"auth-01","trace_id":"tr-2b8e44","message":"redis connection timeout: auth-cache:6379"}
+{"ts":"2026-11-22T08:04:02.883+08:00","level":"INFO","service":"auth-service","host":"auth-01","trace_id":"tr-2b8e44","message":"token refreshed for user u-55201"}
+{"ts":"2026-11-22T08:04:55.210+08:00","level":"ERROR","service":"inventory-service","host":"inv-04","trace_id":"tr-51cc09","message":"database deadlock detected on table stock_reservation, transaction rolled back"}
+{"ts":"2026-11-22T08:05:18.634+08:00","level":"WARN","service":"inventory-service","host":"inv-04","trace_id":"tr-51cc09","message":"stock reservation retry 2/3 for sku SKU-9917"}
+{"ts":"2026-11-22T08:05:59.940+08:00","level":"ERROR","service":"search-service","host":"srch-02","trace_id":"tr-a00b31","message":"elasticsearch bulk index rejected: 429 too many requests"}
+{"ts":"2026-11-22T08:06:21.772+08:00","level":"ERROR","service":"search-service","host":"srch-02","trace_id":"tr-a00b31","message":"search query timeout after 2000ms, index products-2026.11"}
+{"ts":"2026-11-22T08:06:45.301+08:00","level":"WARN","service":"gateway","host":"gw-02","trace_id":"tr-3d77e1","message":"p99 latency 4200ms above threshold 1500ms"}
+{"ts":"2026-11-22T08:07:10.118+08:00","level":"ERROR","service":"notification-service","host":"noti-01","trace_id":"tr-6ee210","message":"smtp connection reset by peer smtp.internal:25"}
+{"ts":"2026-11-22T08:07:41.556+08:00","level":"ERROR","service":"job-worker","host":"job-07","trace_id":"tr-8d11fa","message":"OutOfMemoryError: Java heap space while exporting report R-2026-11-22"}
+{"ts":"2026-11-22T08:07:42.004+08:00","level":"WARN","service":"job-worker","host":"job-07","trace_id":"tr-8d11fa","message":"worker restart requested by supervisor after OOM kill"}
+{"ts":"2026-11-22T08:08:03.900+08:00","level":"ERROR","service":"storage","host":"stor-05","trace_id":"tr-c9b0a2","message":"disk usage 96% on /data, write refused for table WAL"}
+{"ts":"2026-11-22T08:08:30.442+08:00","level":"ERROR","service":"storage","host":"stor-05","trace_id":"tr-c9b0a2","message":"no space left on device while flushing segment 00127"}
+{"ts":"2026-11-22T08:09:12.775+08:00","level":"INFO","service":"deploy-controller","host":"ops-01","trace_id":"tr-ff31c2","message":"rolling restart completed for gateway v2.14.3"}
+{"ts":"2026-11-22T08:09:48.203+08:00","level":"WARN","service":"gateway","host":"gw-03","trace_id":"tr-4a12b9","message":"TLS handshake error from 10.20.4.18: tls: first record does not look like a TLS handshake"}
+{"ts":"2026-11-22T08:10:15.664+08:00","level":"ERROR","service":"user-service","host":"usr-02","trace_id":"tr-0cd771","message":"NullPointerException at UserProfileMapper.java:184"}
+{"ts":"2026-11-22T08:10:16.010+08:00","level":"ERROR","service":"user-service","host":"usr-02","trace_id":"tr-0cd771","message":"500 Internal Server Error on GET /api/profile/u-55201"}
+{"ts":"2026-11-22T08:11:02.349+08:00","level":"WARN","service":"payment-service","host":"pay-01","trace_id":"tr-9910ab","message":"retry scheduled for payment p-77120, attempt 2 of 5"}
+{"ts":"2026-11-22T08:11:40.882+08:00","level":"ERROR","service":"payment-service","host":"pay-01","trace_id":"tr-9910ab","message":"payment gateway timeout: api.pay.example.com did not respond in 8000ms"}
+{"ts":"2026-11-22T08:12:05.117+08:00","level":"INFO","service":"cron","host":"ops-02","trace_id":"tr-120fee","message":"nightly cleanup finished, 0 errors"}
+{"ts":"2026-11-22T08:12:44.532+08:00","level":"ERROR","service":"gateway","host":"gw-02","trace_id":"tr-882ac1","message":"502 Bad Gateway: no healthy upstream for /api/orders"}
+{"ts":"2026-11-22T08:13:08.909+08:00","level":"WARN","service":"search-service","host":"srch-01","trace_id":"tr-aa9023","message":"slow query 3400ms: GET /search?q=laptop"}
+{"ts":"2026-11-22T08:13:55.640+08:00","level":"ERROR","service":"order-service","host":"ord-01","trace_id":"tr-bb7c32","message":"order state transition rejected: expected PAID got CANCELLED for order 88250"}
+{"ts":"2026-11-22T08:14:22.201+08:00","level":"ERROR","service":"cache","host":"cache-03","trace_id":"tr-cc44d1","message":"memcached timeout after 1000ms, key session:u-55201"}
+{"ts":"2026-11-22T08:14:51.884+08:00","level":"INFO","service":"deploy-controller","host":"ops-01","trace_id":"tr-dd66e0","message":"health check passed for inventory-service v1.8.2"}

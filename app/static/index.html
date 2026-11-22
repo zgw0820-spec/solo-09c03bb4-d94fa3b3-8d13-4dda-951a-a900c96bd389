@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>故障日志检索 · 按需后端</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #161a23;
+    --panel-2: #1c212c;
+    --line: #2a3140;
+    --text: #e6e8ee;
+    --muted: #8b94a7;
+    --accent: #6ea8fe;
+    --ok: #3ecf8e;
+    --warn: #f0b429;
+    --err: #f26d6d;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    align-items: baseline;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 16px;
+    padding: 16px 24px 32px;
+    align-items: start;
+  }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: .02em;
+    color: var(--muted);
+    margin: 0;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel .body { padding: 14px 16px; }
+  form.search { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=text], input[type=number], select {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font: inherit;
+    min-width: 0;
+  }
+  input[type=text] { flex: 1 1 260px; font-family: var(--mono); font-size: 13px; }
+  input[type=number] { width: 96px; font-family: var(--mono); font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #0b1020;
+    border: 0;
+    border-radius: 7px;
+    padding: 8px 14px;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    font-weight: 550;
+  }
+  button:disabled { opacity: .55; cursor: progress; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .field { margin-bottom: 14px; }
+  .field label { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .field label b { color: var(--text); font-family: var(--mono); font-weight: 550; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .result-meta { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .result-meta b { color: var(--text); font-family: var(--mono); font-weight: 550; }
+  ol.results { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  ol.results li {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+  }
+  ol.results li.ERROR { border-left-color: var(--err); }
+  ol.results li.WARN { border-left-color: var(--warn); }
+  ol.results li.INFO { border-left-color: var(--ok); }
+  ol.results li .head { color: var(--muted); font-size: 11.5px; margin-bottom: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+  mark { background: rgba(110,168,254,.28); color: inherit; border-radius: 3px; padding: 0 2px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .badge.ready { color: var(--ok); border-color: rgba(62,207,142,.35); }
+  .badge.ready .dot { background: var(--ok); box-shadow: 0 0 8px rgba(62,207,142,.7); }
+  .badge.starting { color: var(--warn); border-color: rgba(240,180,41,.35); }
+  .badge.starting .dot { background: var(--warn); animation: pulse 1s infinite; }
+  .badge.stopping { color: var(--warn); border-color: rgba(240,180,41,.35); }
+  .badge.stopping .dot { background: var(--warn); }
+  .badge.failed { color: var(--err); border-color: rgba(242,109,109,.4); }
+  .badge.failed .dot { background: var(--err); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 12.5px; }
+  dl.kv dt { color: var(--muted); }
+  dl.kv dd { margin: 0; font-family: var(--mono); text-align: right; overflow-wrap: anywhere; }
+  .events { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .events h3 { font-size: 12px; color: var(--muted); margin: 0 0 7px; font-weight: 600; }
+  ul.events { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); display: grid; gap: 3px; }
+  ul.events li span.name { color: var(--text); }
+  .err-box {
+    border: 1px solid rgba(242,109,109,.45);
+    background: rgba(242,109,109,.08);
+    color: #ffc9c9;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    margin-bottom: 12px;
+    overflow-wrap: anywhere;
+  }
+  .err-box b { color: #ff9b9b; }
+  .empty { color: var(--muted); text-align: center; padding: 26px 8px; font-size: 13px; }
+  .toggle { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .flex-spacer { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>故障日志检索</h1>
+  <span class="sub">后端按需唤醒 · 并发共享一次启动 · 空闲自动回收</span>
+</header>
+<main>
+  <section class="panel">
+    <h2>
+      检索样例日志
+      <span class="badge" id="stateBadge"><span class="dot"></span><span id="stateText">—</span></span>
+    </h2>
+    <div class="body">
+      <form class="search" id="searchForm">
+        <input type="text" id="query" placeholder="关键词，例如 timeout / ERROR / gateway" autocomplete="off" autofocus>
+        <input type="number" id="limit" value="50" min="1" max="200" title="返回条数上限">
+        <input type="number" id="readyTimeout" value="3000" min="100" max="60000" step="100" title="就绪等待上限 (ms)">
+        <button type="submit" id="searchBtn">检索</button>
+      </form>
+      <p class="hint" style="margin:8px 0 0">
+        中间数字为条数上限，右侧为本次就绪等待上限（毫秒，从提交时计）。
+      </p>
+      <div id="errorBox"></div>
+      <div id="resultMeta" class="result-meta"></div>
+      <ol class="results" id="results"></ol>
+      <div class="empty" id="emptyHint">输入关键词后回车检索。首次检索会唤醒后端，稍等片刻。</div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <h2>后端进程状态</h2>
+    <div class="body">
+      <dl class="kv">
+        <dt>状态</dt><dd id="stState">—</dd>
+        <dt>PID</dt><dd id="stPid">—</dd>
+        <dt>端口</dt><dd id="stPort">—</dd>
+        <dt>轮次</dt><dd id="stRound">—</dd>
+        <dt>已运行</dt><dd id="stUptime">—</dd>
+        <dt>等候 / 在途</dt><dd id="stWaiters">—</dd>
+        <dt>空闲回收倒计时</dt><dd id="stIdle">—</dd>
+        <dt>启动 / 失败 / 回收</dt><dd id="stCounters">—</dd>
+      </dl>
+      <div class="events">
+        <h3>最近生命周期事件</h3>
+        <ul class="events" id="eventList"><li>暂无</li></ul>
+      </div>
+    </div>
+
+    <h2>延迟模拟</h2>
+    <div class="body">
+      <div class="field">
+        <label>启动延迟 <b><span id="startupDelayLabel">800</span> ms</b></label>
+        <input type="range" id="startupDelay" min="0" max="4000" step="100" value="800">
+        <p class="hint">下次冷启动生效（改后再有一次空闲回收或重启后端即可观察）。</p>
+      </div>
+      <div class="field">
+        <label>应答延迟 <b><span id="responseDelayLabel">0</span> ms</b></label>
+        <input type="range" id="responseDelay" min="0" max="5000" step="50" value="0">
+        <p class="hint">对运行中的后端立即生效，用于观察在途查询与回收互斥。</p>
+      </div>
+      <div class="row">
+        <button class="secondary" id="saveDelays">保存延迟设置</button>
+        <span class="flex-spacer"></span>
+        <span class="toggle"><input type="checkbox" id="autoRefresh" checked> 自动刷新状态</span>
+      </div>
+    </div>
+  </aside>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
